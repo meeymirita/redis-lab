@@ -521,6 +521,7 @@ SUBSCRIBE demo:channel                       -- подписались зано�
 <div class="session-banner" id="session-1">СЕССИЯ <a href="#session-1">1</a> — Инфраструктура, кэш, сессии, happy path <span>~3 часа</span></div>
 
 <div class="step" id="step-1-1"><span class="step-head"><label class="done-label" title="Отметить шаг пройденным"><input type="checkbox" class="done" data-key="step-1-1"></label><span class="num">Шаг 1.1</span>Каталоги и <span class="file">docker-compose.yml<a class="anchor" href="#step-1-1">#</a></span></span><div class="step-body">
+<div class="note-box"><span class="tag">УЖЕ В РЕПО</span> Папки <code>redis/</code> и <code>laravel-app/</code> уже созданы пустыми (заглушки <code>.gitkeep</code>) — эту команду можно пропустить, писать <code>redis.conf</code> и разворачивать Laravel прямо в них, или удалить заглушки и создать заново.</div>
 <pre><code>mkdir -p redis-lab/redis
 cd redis-lab</code></pre>
 <pre><code>services:
