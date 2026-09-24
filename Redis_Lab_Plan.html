@@ -133,7 +133,7 @@
 <li><a href="#step-1-7" data-key="step-1-7"><span class="mark"></span>1.7 StreamPublisher и OrderController</a></li>
 <li><a href="#step-1-8" data-key="step-1-8"><span class="mark"></span>1.8 Первый consumer — happy path</a></li>
 <li class="nav-session"><a href="#session-2">Сессия 2</a></li>
-<li><a href="#step-2-1" data-key="step-2-1"><span class="mark"></span>2.1 Distributed lock — StockReservationService</a></li>
+<li><a href="#step-2-1" data-key="step-2-1"><span class="mark"></span>2.1 Атомарный Lua-скрипт — StockReservationService</a></li>
 <li><a href="#step-2-2" data-key="step-2-2"><span class="mark"></span>2.2 Rate limiter (sliding window)</a></li>
 <li><a href="#step-2-3" data-key="step-2-3"><span class="mark"></span>2.3 Competing consumers + нагрузка</a></li>
 <li><a href="#step-2-4" data-key="step-2-4"><span class="mark"></span>2.4 Crash test: PEL и идемпотентность</a></li>
@@ -153,7 +153,7 @@
 <main>
 
 <h1>🔴 Redis Lab — Realtime Order Cache &amp; Stream System</h1>
-<p class="subtitle">Подробное руководство: от структур данных до retry-цепочек на Streams и crash-тестов. Стек: Laravel 13 + PostgreSQL 16 + Redis 7.
+<p class="subtitle">Подробное руководство: от структур данных до retry-цепочек на Streams и crash-тестов. Стек: Laravel 13 + PostgreSQL 17 + Redis 7.
 Каждая тема — с блоком «Под капотом» и с подготовкой к следующей. Отмечайте пройденное галочками — прогресс сохраняется в браузере.</p>
 
 <div class="note-box">
@@ -267,7 +267,7 @@
 <table>
 <tr><th>Компонент</th><th>Версия / образ</th><th>Роль</th></tr>
 <tr><td>Laravel</td><td>13</td><td>API, воркеры (Artisan-команды)</td></tr>
-<tr><td>PostgreSQL</td><td>16</td><td>источник истины: orders, products, processed_messages</td></tr>
+<tr><td>PostgreSQL</td><td>17</td><td>источник истины: orders, products, processed_messages</td></tr>
 <tr><td>Redis</td><td>7 (redis:7-alpine)</td><td>кэш, сессии, локи, rate limit, Streams, Pub/Sub</td></tr>
 <tr><td>predis/predis или phpredis</td><td>—</td><td>клиент Redis для Laravel; в лабе — <code>phpredis</code> для скорости на Streams</td></tr>
 </table>
@@ -278,7 +278,7 @@
 └── laravel-app/
     ├── app/
     │   ├── Console/Commands/   (воркеры)
-    │   ├── Services/           (StockReservationService, RateLimiter, StreamPublisher)
+    │   ├── Services/           (StockReservationService, SlidingWindowRateLimiter, StreamPublisher, ProductCache)
     │   ├── Models/
     │   └── Http/Controllers/
     └── .env</code></pre>
@@ -526,7 +526,7 @@ SUBSCRIBE demo:channel                       -- подписались зано�
 cd redis-lab</code></pre>
 <pre><code>services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     environment: { POSTGRES_DB: redislab, POSTGRES_USER: lab, POSTGRES_PASSWORD: lab }
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U lab"], interval: 5s, timeout: 3s, retries: 10 }
 
@@ -567,7 +567,7 @@ maxmemory-policy volatile-lru
 notify-keyspace-events ""</code></pre>
 <div class="why"><b>Зачем:</b> <code>appendonly yes</code> включает AOF — без него Streams и заказы в PEL не переживут рестарт контейнера. <code>volatile-lru</code> — вытесняются только ключи с TTL (кэш карточек), сессии и Streams без TTL не тронет.</div>
 <details class="deep"><summary>🔬 Под капотом: почему не <code>allkeys-lru</code></summary><div class="deep-body">
-<p><code>allkeys-lru</code> может вытеснить <b>любой</b> ключ при нехватке памяти, включая ZSet с retry-счётчиками или ключи сессий без TTL. Для лабы это означало бы, что под нагрузкой воркер-надзиратель (шаг <a href="#step-3-1">3.1</a>) может внезапно «забыть» счётчик попыток — трудноуловимый баг. <code>volatile-lru</code> уже, но безопаснее: вытеснению подлежат только ключи, на которых мы сами явно поставили TTL, то есть кэш.</p>
+<p><code>allkeys-lru</code> может вытеснить <b>любой</b> ключ при нехватке памяти, включая Hash с retry-счётчиками или ключи сессий без TTL. Для лабы это означало бы, что под нагрузкой воркер-надзиратель (шаг <a href="#step-3-1">3.1</a>) может внезапно «забыть» счётчик попыток — трудноуловимый баг. <code>volatile-lru</code> уже, но безопаснее: вытеснению подлежат только ключи, на которых мы сами явно поставили TTL, то есть кэш.</p>
 </div></details>
 <div class="next-box"><span class="tag">ПЕРЕД ШАГОМ <a href="#step-1-3">1.3</a></span><ul>
 <li>📖 Почитать: <a href="https://laravel.com/docs/13.x/redis" target="_blank">Laravel 13: Redis</a> — конфиг <code>config/database.php</code> секция <code>redis</code>.</li></ul></div>
@@ -594,7 +594,7 @@ MAIL_HOST=mailpit
 MAIL_PORT=1025</code></pre>
 <div class="why"><b>Зачем:</b> <code>CACHE_STORE=redis</code> и <code>SESSION_DRIVER=redis</code> — то, ради чего разделы 5.1 и 5.4 не абстракция, а реальное поведение приложения из коробки. <code>phpredis</code> выбран вместо чистого <code>predis</code>, потому что Stream-команды (<code>xAdd</code>, <code>xReadGroup</code>, <code>xAutoclaim</code>) у него нативные и быстрее — <code>predis</code> тоже их поддерживает, но добавлен в composer только как резервный клиент.</div>
 <div class="next-box"><span class="tag">ПЕРЕД ШАГОМ <a href="#step-1-4">1.4</a></span><ul>
-<li>📖 Почитать: <a href="https://laravel.com/docs/13.x/eloquent#uuid-and-ulid-keys" target="_blank">Laravel 13: Eloquent → UUID keys</a>.</li></ul></div>
+<li>📖 Почитать: <a href="https://laravel.com/docs/13.x/migrations#generating-migrations" target="_blank">Laravel 13: Migrations</a> — структура схемы и автоинкрементные ключи (<code>$table-&gt;id()</code>).</li></ul></div>
 </div></div>
 
 <div class="step" id="step-1-4"><span class="step-head"><label class="done-label" title="Отметить шаг пройденным"><input type="checkbox" class="done" data-key="step-1-4"></label><span class="num">Шаг 1.4</span>Миграции и модели<a class="anchor" href="#step-1-4">#</a></span><div class="step-body">
@@ -644,7 +644,7 @@ final class ProductCache
         // защита от cache stampede: только один процесс идёт в БД
         $lockKey = "lock:product-rebuild:{$id}";
         $token = uniqid('', true);
-        $gotLock = Redis::set($lockKey, $token, 'NX', 'PX', 3000);
+        $gotLock = Redis::set($lockKey, $token, 'PX', 3000, 'NX');
 
         if (!$gotLock) {
             usleep(100_000);
@@ -783,12 +783,12 @@ class EmailWorker extends Command
 }</code></pre>
 <div class="why"><b>Зачем:</b> <code>XGROUP CREATE ... '0'</code> с флагом MKSTREAM создаёт группу, начиная читать с самого начала потока (<code>'0'</code>), а не только новые записи — это выбор для лабы, чтобы ничего не терять при первом запуске. <code>'&gt;'</code> в <code>xReadGroup</code> означает «только новые, ещё не выданные этой группе записи», а не перечитывание PEL.</div>
 <div class="next-box"><span class="tag">ПЕРЕД ШАГОМ 2.1</span><ul>
-<li>📖 Перечитать: раздел <a href="#sec-5">5.2</a> (distributed lock) — теперь применим его к резервированию стока.</li></ul></div>
+<li>📖 Перечитать: раздел <a href="#sec-2">2.5</a> (атомарность через Lua-скрипты) — теперь применим его к резервированию стока.</li></ul></div>
 </div></div>
 
 <div class="session-banner" id="session-2">СЕССИЯ <a href="#session-2">2</a> — Локи, rate limit, конкурентные consumers, crash-тест <span>~3 часа</span></div>
 
-<div class="step" id="step-2-1"><span class="step-head"><label class="done-label" title="Отметить шаг пройденным"><input type="checkbox" class="done" data-key="step-2-1"></label><span class="num">Шаг 2.1</span>Distributed lock — <span class="file">StockReservationService<a class="anchor" href="#step-2-1">#</a></span></span><div class="step-body">
+<div class="step" id="step-2-1"><span class="step-head"><label class="done-label" title="Отметить шаг пройденным"><input type="checkbox" class="done" data-key="step-2-1"></label><span class="num">Шаг 2.1</span>Атомарный Lua-скрипт — <span class="file">StockReservationService<a class="anchor" href="#step-2-1">#</a></span></span><div class="step-body">
 <pre><code>&lt;?php
 namespace App\Services;
 
@@ -959,8 +959,8 @@ class DlqReader extends Command
 
 <div class="step" id="step-3-3"><span class="step-head"><label class="done-label" title="Отметить шаг пройденным"><input type="checkbox" class="done" data-key="step-3-3"></label><span class="num">Шаг 3.3</span>Приоритет через ZSet<a class="anchor" href="#step-3-3">#</a></span><div class="step-body">
 <pre><code>// при создании VIP-заказа, в дополнение к XADD:
-Redis::zAdd('orders:priority', ['nx'], -microtime(true), $order-&gt;id);
-// отрицательный score: чем раньше создан, тем меньше число, тем раньше выйдет из ZPOPMIN</code></pre>
+Redis::zAdd('orders:priority', ['nx'], microtime(true), $order-&gt;id);
+// score = время создания: чем раньше создан, тем меньше число, тем раньше выйдет из ZPOPMIN</code></pre>
 <pre><code>php artisan make:command PriorityWorker</code></pre>
 <pre><code>&lt;?php
 namespace App\Console\Commands;
@@ -1077,10 +1077,11 @@ class DashboardListener extends Command
 <tr><td>Redis Sentinel</td><td>автоматический failover одного мастера с репликами</td><td>что происходит с локами и PEL при смене мастера</td><td><a href="https://redis.io/docs/latest/operate/oss_and_stack/management/sentinel/" target="_blank">docs/sentinel</a></td></tr>
 <tr><td>Redis Cluster</td><td>шардирование по hash slot между узлами</td><td>масштабирование, но с ограничениями на multi-key команды (Lua/MULTI)</td><td><a href="https://redis.io/docs/latest/operate/oss_and_stack/management/scaling/" target="_blank">docs/scaling</a></td></tr>
 <tr><td>Redlock</td><td>алгоритм распределённого лока на нескольких независимых Redis-инстансах</td><td>честные границы гарантий однохостового лока из раздела 5.2</td><td><a href="https://redis.io/docs/latest/develop/use/patterns/distributed-locks/" target="_blank">docs/distributed-locks</a></td></tr>
-<tr><td>Outbox Pattern поверх Redis</td><td>таблица outbox_messages + relay-воркер перед XADD</td><td>закрывает риск из раздела <a href="#step-1-7">1.7</a> (падение между commit и XADD)</td><td><a href="https://microservices.io/patterns/data/transactional-outbox.html" target="_blank">microservices.io/outbox</a></td></tr>
+<tr><td>Outbox Pattern поверх Redis</td><td>таблица outbox_messages + relay-воркер перед XADD</td><td>закрывает риск из шага <a href="#step-1-7">1.7</a> (падение между commit и XADD)</td><td><a href="https://microservices.io/patterns/data/transactional-outbox.html" target="_blank">microservices.io/outbox</a></td></tr>
 <tr><td>RedisJSON / RediSearch</td><td>модули для JSON-документов и полнотекстового поиска</td><td>если карточки товара усложнятся до вложенных структур</td><td><a href="https://redis.io/docs/latest/develop/data-types/json/" target="_blank">docs/json</a></td></tr>
 <tr><td>Prometheus + redis_exporter</td><td>метрики: hit rate кэша, длина PEL, memory fragmentation</td><td>алерты на разбухший PEL или падение hit rate</td><td><a href="https://redis.io/docs/latest/integrate/prometheus-with-redis-cloud/" target="_blank">docs/prometheus</a></td></tr>
 <tr><td>Reconciliation job</td><td>периодическая сверка <code>stock:{id}</code> в Redis с <code>products.stock</code> в PostgreSQL</td><td>ловит рассинхронизацию после сбоев Lua-скрипта или ручных правок</td><td><a href="https://redis.io/docs/latest/develop/use/patterns/" target="_blank">docs/patterns</a></td></tr>
+<tr><td>Redis 8</td><td>вышел в мае 2025 — снова open source (AGPLv3), в ядро вошли JSON, time series и другие модули</td><td>все команды этой лабы (<code>SET NX PX</code>, Streams, <code>XAUTOCLAIM</code>, <code>ZSET</code>, Pub/Sub) работают в Redis 8 так же — апгрейд с 7 безопасен</td><td><a href="https://redis.io/blog/redis-8-generally-available/" target="_blank">redis.io/blog/redis-8</a></td></tr>
 </table>
 
 </main>
