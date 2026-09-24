@@ -619,7 +619,7 @@ Schema::create('processed_messages', function (Blueprint $t) {
 });</code></pre>
 <pre><code>php artisan migrate
 php artisan tinker --execute="App\Models\Product::insert([['name'=&gt;'Keyboard','stock'=&gt;100],['name'=&gt;'Mouse','stock'=&gt;100],['name'=&gt;'Monitor','stock'=&gt;3]]);"</code></pre>
-<div class="why"><b>Зачем:</b> та же схема, что в RabbitMQ-лабе, с заменой поля идентификации сообщения: вместо UUID из outbox теперь <code>stream_id</code> — ID записи Redis Stream, который уникален и монотонно растёт сам по себе, без отдельной генерации.</div>
+<div class="why"><b>Зачем:</b> та же схема, что в RabbitMQ-лабе, с заменой поля идентификации сообщения: вместо UUID из outbox теперь <code>stream_id</code> — ID записи Redis Stream, который уникален и монотонно растёт сам по себе, без отдельной генерации. Колонка <code>orders.priority</code> здесь — только пометка «этот заказ VIP» для читателя схемы (и параллель с RabbitMQ-лабой, где приоритет — реальное поле в AMQP-заголовке); код её не читает — сам приоритет обработки живёт в ZSet <code>orders:priority</code> (шаг <a href="#step-3-3">3.3</a>), куда VIP-заказ попадает отдельным вызовом <code>ZADD</code>.</div>
 <div class="next-box"><span class="tag">ПЕРЕД ШАГОМ 1.5</span><ul>
 <li>📖 Почитать: <a href="https://laravel.com/docs/13.x/cache#cache-usage" target="_blank">Laravel 13: Cache → remember()</a>.</li></ul></div>
 </div></div>
