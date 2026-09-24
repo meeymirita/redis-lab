@@ -501,7 +501,8 @@ SUBSCRIBE demo:channel                       -- подписались зано�
 <table>
 <tr><th>Команда(ы)</th><th>Раздел этой лабы</th><th>Шаг сборки</th></tr>
 <tr><td><code>SET ... EX/PX</code>, <code>GET</code>, <code>DEL</code></td><td>5.1 Cache-Aside</td><td>1.5</td></tr>
-<tr><td><code>SET ... NX PX</code> + Lua-снятие</td><td>5.2 Distributed lock</td><td>1.5, 2.1</td></tr>
+<tr><td><code>SET ... NX PX</code> + Lua-снятие</td><td>5.2 Distributed lock</td><td>1.5</td></tr>
+<tr><td>Атомарный Lua-скрипт (проверка + списание за одну команду)</td><td>2.5 Атомарность</td><td>2.1</td></tr>
 <tr><td><code>ZADD</code>, <code>ZREMRANGEBYSCORE</code>, <code>ZCARD</code></td><td>5.3 Rate limiting</td><td>2.2</td></tr>
 <tr><td><code>EVAL</code> / Lua-скрипты</td><td>2.5 Атомарность операции</td><td>2.1, 2.2</td></tr>
 <tr><td><code>XADD</code>, <code>XRANGE</code></td><td>6.1 Stream</td><td>1.7</td></tr>
