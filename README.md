@@ -2,7 +2,7 @@
 
 ![Redis](redis.png)
 
-> **24.09.2026 — методичка вычитана и исправлена.** Что найдено и что поправлено — в [fixes/redis.md](https://github.com/meeymirita/submodule-group-lab/blob/main/fixes/redis.md) сборного репозитория.
+> **24.09.2026 — методичка вычитана и исправлена.** Что найдено и что поправлено — в [fixes/redis.md](https://github.com/meeymirita/lab-fixes/blob/main/redis.md) репозитория `lab-fixes`.
 
 **Статус: ⚪ методичка готова, прохождение впереди.**
 **Сложность: средняя.** Нужен тот же бэкграунд, что и для RabbitMQ-лабы (Laravel, Docker), домен заказов переиспользуется. Рекомендуется после RabbitMQ Lab: методичка постоянно сравнивает Streams с брокером.
