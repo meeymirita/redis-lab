@@ -13,7 +13,7 @@ Redis как кэш, хранилище сессий, примитив синх�
 
 ## Стек
 
-Laravel 13 + PostgreSQL 17 + Redis 7.
+Laravel 13 + PostgreSQL 18 + Redis 8.
 
 ## Формат
 
