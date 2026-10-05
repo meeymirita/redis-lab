@@ -1,6 +1,6 @@
 # Redis Lab — кэш, локи, rate limit, Streams
 
-![Redis](redis.png)
+![Redis](https://meeymirita-files.storage.yandexcloud.net/redis/redis.png)
 
 > **24.09.2026 — методичка вычитана и исправлена.** Что найдено и что поправлено — в [fixes/backend/redis.md](https://github.com/meeymirita/lab-fixes/blob/main/backend/redis.md) репозитория `lab-fixes`.
 
